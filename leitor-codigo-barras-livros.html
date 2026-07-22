@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catálogo de Livros — Leitor de Código de Barras</title>
+<style>
+  :root{
+    --paper: #f2ecdd;
+    --card: #fffdf7;
+    --ink: #2b2620;
+    --ink-soft: #5a5245;
+    --green: #1f3b2c;
+    --green-dark: #142719;
+    --brass: #a67c3d;
+    --stamp: #a13d2b;
+    --line: #d8cfb8;
+    --danger: #a13d2b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(43,38,32,0.05) 1px, transparent 0);
+    background-size: 18px 18px;
+    color:var(--ink);
+    font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    min-height:100vh;
+    padding: 24px 16px 60px;
+  }
+  .wrap{max-width: 880px; margin: 0 auto;}
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom: 3px double var(--green);
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  h1{
+    margin:0; font-size: 1.6rem; letter-spacing:0.3px; color:var(--green-dark);
+    font-weight: 700;
+  }
+  .subtitle{
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.78rem; color:var(--ink-soft); margin-top:4px; letter-spacing:0.5px;
+  }
+  .counter{
+    font-family:'Courier New', monospace; font-size:0.85rem; color:var(--green-dark);
+    background: var(--card); border:1px solid var(--line); border-radius:4px;
+    padding:6px 10px; white-space:nowrap;
+  }
+  .tabs{display:flex; gap:8px; margin-bottom:14px;}
+  .tab-btn{
+    font-family:'Courier New', monospace; font-size:0.85rem; letter-spacing:0.5px;
+    background:var(--card); border:1px solid var(--line); border-bottom:none;
+    padding:9px 16px; cursor:pointer; color:var(--ink-soft);
+    border-radius: 6px 6px 0 0;
+  }
+  .tab-btn[aria-selected="true"]{ background:var(--green); color:#fff; border-color:var(--green);}
+  .tab-btn:focus-visible{ outline: 2px solid var(--brass); outline-offset:2px;}
+  .panel{
+    background:var(--card); border:1px solid var(--line); border-radius: 0 8px 8px 8px;
+    padding:18px; margin-bottom:22px;
+  }
+  .panel[hidden]{display:none;}
+  #camera-area{ text-align:center; }
+  #interactive{ width:100%; max-width:480px; margin:0 auto; position:relative; background:#111; border-radius:6px; overflow:hidden; }
+  #interactive video, #interactive canvas{ width:100%; display:block; }
+  #cam-status{ font-family:'Courier New',monospace; font-size:0.82rem; color:var(--ink-soft); margin-top:10px; min-height:1.2em;}
+  .btn{
+    font-family:'Courier New', monospace; font-size:0.85rem; letter-spacing:0.4px;
+    background:var(--green); color:#fff; border:none; border-radius:5px;
+    padding:10px 16px; cursor:pointer; margin-top:10px;
+  }
+  .btn:hover{ background:var(--green-dark); }
+  .btn.secondary{ background:transparent; color:var(--green); border:1px solid var(--green); }
+  .btn.secondary:hover{ background:rgba(31,59,44,0.08); }
+  .btn:focus-visible, input:focus-visible, textarea:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .manual-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  input[type=text], textarea{
+    font-family:'Courier New', monospace; font-size:0.9rem;
+    border:1px solid var(--line); border-radius:5px; padding:9px 10px;
+    background:#fffef9; color:var(--ink);
+  }
+  input[type=text]{ flex:1; min-width:180px; }
+  textarea{ width:100%; min-height:90px; resize:vertical; }
+  .hint{ font-size:0.8rem; color:var(--ink-soft); margin-top:6px; }
+  table{ width:100%; border-collapse: collapse; margin-top:6px;}
+  thead th{
+    text-align:left; font-family:'Courier New',monospace; font-size:0.72rem;
+    letter-spacing:0.6px; text-transform:uppercase; color:var(--ink-soft);
+    border-bottom:2px solid var(--green); padding:6px 8px;
+  }
+  tbody td{ padding:8px; border-bottom:1px solid var(--line); font-size:0.9rem; vertical-align:top;}
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody input[type=text]{ width:100%; border:1px solid transparent; background:transparent; padding:4px; }
+  tbody input[type=text]:hover, tbody input[type=text]:focus{ border-color:var(--line); background:#fffef9; }
+  .remove-btn{
+    background:none; border:none; color:var(--danger); cursor:pointer; font-family:'Courier New',monospace;
+    font-size:0.85rem; text-decoration:underline;
+  }
+  .empty-row td{ text-align:center; color:var(--ink-soft); font-style:italic; padding:20px; }
+  .stamp{
+    position:relative; display:inline-block; font-family:'Courier New', monospace;
+    font-weight:bold; font-size:0.62rem; letter-spacing:0.5px; color:var(--stamp);
+    border:2px solid var(--stamp); border-radius:3px; padding:2px 6px;
+    transform: rotate(-4deg); opacity:0.85;
+  }
+  @keyframes stampIn{ from{ transform: rotate(-4deg) scale(1.6); opacity:0;} to{ transform: rotate(-4deg) scale(1); opacity:0.85;} }
+  @media (prefers-reduced-motion: no-preference){ .stamp.new{ animation: stampIn 0.25s ease-out; } }
+  footer{ margin-top:20px; text-align:center; }
+  .export-btn{ font-size:0.95rem; padding:12px 22px; }
+  .status-msg{ font-family:'Courier New',monospace; font-size:0.8rem; padding:8px 10px; border-radius:5px; margin-bottom:10px; }
+  .status-msg.error{ background:#f7e6e2; color:var(--danger); border:1px solid #e3b8ab;}
+  .status-msg.info{ background:#eef3ee; color:var(--green-dark); border:1px solid #cbdccf;}
+  @media (max-width:520px){
+    h1{ font-size:1.3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Catálogo de Livros</h1>
+      <div class="subtitle">LEITOR DE CÓDIGO DE BARRAS — ISBN → CSV</div>
+    </div>
+    <div class="counter" id="counter">0 livro(s) catalogado(s)</div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn" id="tab-camera" role="tab" aria-selected="true" aria-controls="panel-camera">Câmera</button>
+    <button class="tab-btn" id="tab-manual" role="tab" aria-selected="false" aria-controls="panel-manual">Entrada manual</button>
+  </div>
+
+  <section class="panel" id="panel-camera" role="tabpanel" aria-labelledby="tab-camera">
+    <div id="camera-area">
+      <div id="interactive"></div>
+      <div id="cam-status">Toque em "Ligar câmera" e aponte para o código de barras (verso do livro).</div>
+      <button class="btn" id="start-cam">Ligar câmera</button>
+      <button class="btn secondary" id="stop-cam" style="display:none;">Desligar câmera</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
+    <div class="manual-row">
+      <input type="text" id="isbn-single" placeholder="Digite ou cole um ISBN (ex: 9788533302273)">
+      <button class="btn" id="add-single">Adicionar</button>
+    </div>
+    <div class="hint">Ou cole vários ISBNs, um por linha:</div>
+    <textarea id="isbn-multi" placeholder="9788533302273&#10;9786555111234&#10;..."></textarea>
+    <button class="btn secondary" id="add-multi">Adicionar todos</button>
+  </section>
+
+  <div id="status-area"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ISBN</th><th>Título</th><th>Autor</th><th>Editora</th><th>Ano</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="book-rows">
+      <tr class="empty-row"><td colspan="6">Nenhum livro catalogado ainda.</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <button class="btn export-btn" id="export-csv">⬇ Baixar CSV</button>
+    <button class="btn secondary export-btn" id="export-txt">⬇ Baixar TXT</button>
+    <div class="hint">O relatório fica apenas nesta página — baixe antes de fechar ou recarregar.</div>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<script>
+(function(){
+  const books = []; // {isbn, title, author, publisher, year}
+  const rowsEl = document.getElementById('book-rows');
+  const counterEl = document.getElementById('counter');
+  const statusArea = document.getElementById('status-area');
+
+  function showStatus(msg, type){
+    statusArea.innerHTML = '<div class="status-msg ' + type + '">' + msg + '</div>';
+    if(type === 'info'){ setTimeout(()=>{ statusArea.innerHTML=''; }, 4000); }
+  }
+
+  function validEAN13(code){
+    if(!/^\d{13}$/.test(code)) return false;
+    let sum = 0;
+    for(let i=0;i<12;i++){ sum += Number(code[i]) * (i % 2 === 0 ? 1 : 3); }
+    const check = (10 - (sum % 10)) % 10;
+    return check === Number(code[12]);
+  }
+
+  function isBookEAN(code){
+    return validEAN13(code) && (code.startsWith('978') || code.startsWith('979'));
+  }
+
+  // --- Bipe sonoro de confirmação de leitura ---
+  let audioCtx = null;
+  function playBeep(){
+    try{
+      if(!audioCtx){
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if(audioCtx.state === 'suspended'){ audioCtx.resume(); }
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 1046.5; // dó agudo — som curto e nítido, tipo leitor de caixa
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.35, audioCtx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.14);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    }catch(e){ /* áudio indisponível neste navegador — segue sem som */ }
+  }
+
+  function renderRows(){
+    if(books.length === 0){
+      rowsEl.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhum livro catalogado ainda.</td></tr>';
+      counterEl.textContent = '0 livro(s) catalogado(s)';
+      return;
+    }
+    rowsEl.innerHTML = '';
+    books.forEach((b, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><span class="stamp' + (b._new ? ' new' : '') + '">' + b.isbn + '</span></td>' +
+        '<td><input type="text" data-field="title" data-idx="' + idx + '" value="' + escapeAttr(b.title) + '"></td>' +
+        '<td><input type="text" data-field="author" data-idx="' + idx + '" value="' + escapeAttr(b.author) + '"></td>' +
+        '<td><input type="text" data-field="publisher" data-idx="' + idx + '" value="' + escapeAttr(b.publisher) + '"></td>' +
+        '<td><input type="text" data-field="year" data-idx="' + idx + '" value="' + escapeAttr(b.year) + '" style="max-width:60px;"></td>' +
+        '<td><button class="remove-btn" data-idx="' + idx + '">remover</button></td>';
+      rowsEl.appendChild(tr);
+      b._new = false;
+    });
+    counterEl.textContent = books.length + ' livro(s) catalogado(s)';
+  }
+
+  function escapeAttr(s){
+    return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  }
+
+  rowsEl.addEventListener('input', (e)=>{
+    const idx = e.target.getAttribute('data-idx');
+    const field = e.target.getAttribute('data-field');
+    if(idx !== null && field){ books[Number(idx)][field] = e.target.value; }
+  });
+  rowsEl.addEventListener('click', (e)=>{
+    if(e.target.classList.contains('remove-btn')){
+      const idx = Number(e.target.getAttribute('data-idx'));
+      books.splice(idx,1);
+      renderRows();
+    }
+  });
+
+  async function lookupISBN(isbn){
+    try{
+      const r = await fetch('https://openlibrary.org/api/books?bibkeys=ISBN:' + isbn + '&jscmd=data&format=json');
+      const data = await r.json();
+      const entry = data['ISBN:' + isbn];
+      if(entry){
+        return {
+          title: entry.title || '',
+          author: (entry.authors || []).map(a=>a.name).join('; '),
+          publisher: (entry.publishers || []).map(p=>p.name).join('; '),
+          year: entry.publish_date || ''
+        };
+      }
+    }catch(e){ /* fall through to Google Books */ }
+    try{
+      const r2 = await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:' + isbn);
+      const data2 = await r2.json();
+      const info = data2.items && data2.items[0] && data2.items[0].volumeInfo;
+      if(info){
+        return {
+          title: info.title || '',
+          author: (info.authors || []).join('; '),
+          publisher: info.publisher || '',
+          year: (info.publishedDate || '').slice(0,4)
+        };
+      }
+    }catch(e){ /* no match */ }
+    return null;
+  }
+
+  async function addISBN(isbn){
+    isbn = isbn.replace(/[^0-9Xx]/g,'').toUpperCase();
+    if(!isbn){ return; }
+    if(books.some(b => b.isbn === isbn)){
+      showStatus('ISBN ' + isbn + ' já está na lista.', 'info');
+      return;
+    }
+    const placeholder = { isbn, title:'(buscando…)', author:'', publisher:'', year:'', _new:true };
+    books.push(placeholder);
+    renderRows();
+    const meta = await lookupISBN(isbn);
+    const rec = books.find(b => b.isbn === isbn);
+    if(rec){
+      if(meta){
+        rec.title = meta.title; rec.author = meta.author; rec.publisher = meta.publisher; rec.year = meta.year;
+      } else {
+        rec.title = '(não encontrado — edite manualmente)';
+      }
+      renderRows();
+    }
+  }
+
+  // Manual entry
+  document.getElementById('add-single').addEventListener('click', ()=>{
+    const val = document.getElementById('isbn-single').value.trim();
+    if(val){ addISBN(val); document.getElementById('isbn-single').value=''; }
+  });
+  document.getElementById('isbn-single').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ document.getElementById('add-single').click(); }
+  });
+  document.getElementById('add-multi').addEventListener('click', ()=>{
+    const lines = document.getElementById('isbn-multi').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    lines.forEach(l => addISBN(l));
+    document.getElementById('isbn-multi').value = '';
+  });
+
+  // Tabs
+  const tabCam = document.getElementById('tab-camera');
+  const tabMan = document.getElementById('tab-manual');
+  const panelCam = document.getElementById('panel-camera');
+  const panelMan = document.getElementById('panel-manual');
+  function selectTab(which){
+    const camSel = which === 'camera';
+    tabCam.setAttribute('aria-selected', camSel);
+    tabMan.setAttribute('aria-selected', !camSel);
+    panelCam.hidden = !camSel;
+    panelMan.hidden = camSel;
+    if(!camSel){ stopCamera(); }
+  }
+  tabCam.addEventListener('click', ()=>selectTab('camera'));
+  tabMan.addEventListener('click', ()=>selectTab('manual'));
+
+  // Camera scanning via Quagga
+  let camRunning = false;
+  const recentCodes = [];
+
+  function startCamera(){
+    if(!audioCtx){
+      try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){}
+    }
+    document.getElementById('cam-status').textContent = 'Solicitando acesso à câmera…';
+    Quagga.init({
+      inputStream: {
+        type: 'LiveStream',
+        target: document.querySelector('#interactive'),
+        constraints: { facingMode: 'environment' }
+      },
+      locator: { patchSize: 'medium', halfSample: true },
+      numOfWorkers: 2,
+      frequency: 10,
+      decoder: { readers: ['ean_reader'] },
+      locate: true
+    }, function(err){
+      if(err){
+        document.getElementById('cam-status').textContent =
+          'Não foi possível acessar a câmera neste ambiente (' + (err.name || err.message || 'erro') + '). Use a aba "Entrada manual".';
+        return;
+      }
+      Quagga.start();
+      camRunning = true;
+      document.getElementById('start-cam').style.display = 'none';
+      document.getElementById('stop-cam').style.display = 'inline-block';
+      document.getElementById('cam-status').textContent = 'Câmera ativa — aponte para o código de barras.';
+    });
+
+    Quagga.onDetected(function(result){
+      const code = result.codeResult.code;
+      if(!isBookEAN(code)) return;
+      recentCodes.push(code);
+      if(recentCodes.length > 5) recentCodes.shift();
+      const counts = {};
+      recentCodes.forEach(c => counts[c] = (counts[c]||0)+1);
+      const confirmed = Object.keys(counts).find(c => counts[c] >= 3);
+      if(confirmed){
+        recentCodes.length = 0;
+        playBeep();
+        addISBN(confirmed);
+        document.getElementById('cam-status').textContent = 'Adicionado: ' + confirmed;
+      }
+    });
+  }
+
+  function stopCamera(){
+    if(camRunning){
+      Quagga.stop();
+      camRunning = false;
+    }
+    document.getElementById('start-cam').style.display = 'inline-block';
+    document.getElementById('stop-cam').style.display = 'none';
+  }
+
+  document.getElementById('start-cam').addEventListener('click', startCamera);
+  document.getElementById('stop-cam').addEventListener('click', stopCamera);
+
+  function downloadBlob(content, mime, filename){
+    const blob = new Blob(['\uFEFF' + content], { type: mime + ';charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // CSV export
+  document.getElementById('export-csv').addEventListener('click', ()=>{
+    if(books.length === 0){ showStatus('Nenhum livro para exportar ainda.', 'error'); return; }
+    const header = ['ISBN','Titulo','Autor','Editora','Ano'];
+    const rows = books.map(b => [b.isbn, b.title, b.author, b.publisher, b.year]);
+    const csv = [header, ...rows].map(row =>
+      row.map(field => {
+        const s = String(field ?? '');
+        return /[",\n;]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+      }).join(',')
+    ).join('\n');
+    const stamp = new Date().toISOString().slice(0,10);
+    downloadBlob(csv, 'text/csv', 'catalogo-livros-' + stamp + '.csv');
+  });
+
+  // TXT export
+  document.getElementById('export-txt').addEventListener('click', ()=>{
+    if(books.length === 0){ showStatus('Nenhum livro para exportar ainda.', 'error'); return; }
+    const now = new Date();
+    const linhas = [];
+    linhas.push('CATÁLOGO DE LIVROS');
+    linhas.push('Gerado em: ' + now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR'));
+    linhas.push('Total: ' + books.length + ' livro(s)');
+    linhas.push('='.repeat(50));
+    books.forEach((b, i) => {
+      linhas.push('');
+      linhas.push((i + 1) + '. ' + (b.title || '(sem título)'));
+      linhas.push('   ISBN:     ' + b.isbn);
+      linhas.push('   Autor:    ' + (b.author || '—'));
+      linhas.push('   Editora:  ' + (b.publisher || '—'));
+      linhas.push('   Ano:      ' + (b.year || '—'));
+    });
+    linhas.push('');
+    linhas.push('='.repeat(50));
+    const stamp = now.toISOString().slice(0,10);
+    downloadBlob(linhas.join('\n'), 'text/plain', 'catalogo-livros-' + stamp + '.txt');
+  });
+
+  renderRows();
+})();
+</script>
+</body>
+</html>
