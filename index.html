@@ -128,6 +128,7 @@
       <div class="subtitle">LEITOR DE CÓDIGO DE BARRAS — ISBN OU ETIQUETA → CSV/TXT</div>
     </div>
     <div class="counter" id="counter">0 livro(s) catalogado(s)</div>
+    <button class="btn secondary" id="clear-all" style="margin-top:0; font-size:0.78rem; padding:6px 10px;">Limpar tudo</button>
   </header>
  
   <div class="tabs" role="tablist">
@@ -177,10 +178,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 <script>
 (function(){
+  const STORAGE_KEY = 'catalogoLivrosUniLS_v1';
   const books = []; // {isbn, title, author, publisher, year}
   const rowsEl = document.getElementById('book-rows');
   const counterEl = document.getElementById('counter');
   const statusArea = document.getElementById('status-area');
+ 
+  // Captura global de erros — mostra o texto técnico na tela em vez de falhar silenciosamente
+  window.addEventListener('error', function(e){
+    showStatus('Erro técnico: ' + (e.message || 'desconhecido') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''), 'error');
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+    showStatus('Erro técnico (promise): ' + msg, 'error');
+  });
  
   function showStatus(msg, type){
     statusArea.innerHTML = '<div class="status-msg ' + type + '">' + msg + '</div>';
@@ -232,6 +243,7 @@
     if(books.length === 0){
       rowsEl.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhum livro catalogado ainda.</td></tr>';
       counterEl.textContent = '0 livro(s) catalogado(s)';
+      saveToStorage();
       return;
     }
     rowsEl.innerHTML = '';
@@ -248,16 +260,36 @@
       b._new = false;
     });
     counterEl.textContent = books.length + ' livro(s) catalogado(s)';
+    saveToStorage();
   }
  
   function escapeAttr(s){
     return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   }
  
+  function saveToStorage(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(books.map(({_new, ...b}) => b)));
+    }catch(e){ /* armazenamento indisponível — segue sem persistência */ }
+  }
+ 
+  function restoreFromStorage(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const saved = JSON.parse(raw);
+        if(Array.isArray(saved) && saved.length){
+          books.push(...saved);
+          showStatus(saved.length + ' livro(s) recuperado(s) da última sessão.', 'info');
+        }
+      }
+    }catch(e){ /* nada para recuperar */ }
+  }
+ 
   rowsEl.addEventListener('input', (e)=>{
     const idx = e.target.getAttribute('data-idx');
     const field = e.target.getAttribute('data-field');
-    if(idx !== null && field){ books[Number(idx)][field] = e.target.value; }
+    if(idx !== null && field){ books[Number(idx)][field] = e.target.value; saveToStorage(); }
   });
   rowsEl.addEventListener('click', (e)=>{
     if(e.target.classList.contains('remove-btn')){
@@ -357,6 +389,7 @@
   const recentCodes = [];
  
   function startCamera(){
+    if(camRunning){ return; } // evita iniciar duas câmeras ao mesmo tempo (estourava memória)
     if(!audioCtx){
       try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){}
     }
@@ -365,10 +398,10 @@
       inputStream: {
         type: 'LiveStream',
         target: document.querySelector('#interactive'),
-        constraints: { facingMode: 'environment' }
+        constraints: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
       },
-      locator: { patchSize: 'large', halfSample: false },
-      numOfWorkers: 4,
+      locator: { patchSize: 'medium', halfSample: true },
+      numOfWorkers: 2,
       frequency: 10,
       decoder: { readers: ['code_128_reader', 'code_39_reader', 'ean_reader'] },
       locate: true
@@ -386,25 +419,35 @@
     });
  
     Quagga.onDetected(function(result){
-      const code = (result.codeResult.code || '').trim();
-      if(!isValidCode(code)) return;
-      recentCodes.push(code);
-      if(recentCodes.length > 4) recentCodes.shift();
-      const counts = {};
-      recentCodes.forEach(c => counts[c] = (counts[c]||0)+1);
-      const confirmed = Object.keys(counts).find(c => counts[c] >= 2);
-      if(confirmed){
-        recentCodes.length = 0;
-        playBeep();
-        addISBN(confirmed);
-        document.getElementById('cam-status').textContent = 'Adicionado: ' + confirmed;
-      }
+      try{
+        const code = (result.codeResult.code || '').trim();
+        if(!isValidCode(code)) return;
+        recentCodes.push(code);
+        if(recentCodes.length > 4) recentCodes.shift();
+        const counts = {};
+        recentCodes.forEach(c => counts[c] = (counts[c]||0)+1);
+        const confirmed = Object.keys(counts).find(c => counts[c] >= 2);
+        if(confirmed){
+          recentCodes.length = 0;
+          playBeep();
+          addISBN(confirmed);
+          document.getElementById('cam-status').textContent = 'Adicionado: ' + confirmed;
+        }
+      }catch(e){ showStatus('Erro ao processar leitura: ' + e.message, 'error'); }
     });
   }
  
   function stopCamera(){
     if(camRunning){
-      Quagga.stop();
+      try{ Quagga.stop(); }catch(e){}
+      // Libera explicitamente a câmera do hardware, mesmo se Quagga.stop() não limpar tudo
+      try{
+        const video = document.querySelector('#interactive video');
+        if(video && video.srcObject){
+          video.srcObject.getTracks().forEach(track => track.stop());
+          video.srcObject = null;
+        }
+      }catch(e){}
       camRunning = false;
     }
     document.getElementById('start-cam').style.display = 'inline-block';
@@ -464,6 +507,23 @@
     downloadBlob(linhas.join('\n'), 'text/plain', 'catalogo-livros-' + stamp + '.txt');
   });
  
+  document.getElementById('clear-all').addEventListener('click', ()=>{
+    if(books.length === 0){ return; }
+    if(confirm('Apagar todos os ' + books.length + ' livro(s) catalogado(s)? Baixe o CSV/TXT antes, se ainda não baixou.')){
+      books.length = 0;
+      renderRows();
+      showStatus('Lista apagada.', 'info');
+    }
+  });
+ 
+  window.addEventListener('beforeunload', function(e){
+    if(books.length > 0){
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+ 
+  restoreFromStorage();
   renderRows();
 })();
 </script>
